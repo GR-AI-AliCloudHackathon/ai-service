@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 pydantic
 python-multipart
 aiofiles
@@ -7,9 +7,12 @@ python-dotenv
 openai
 aliyun-python-sdk-core
 psycopg2-binary
-sqlalchemy
+sqlalchemy[asyncio]
 asyncpg
+alembic
+greenlet
 wave
 numpy
 pydub
 ffmpeg-python
+geopy
