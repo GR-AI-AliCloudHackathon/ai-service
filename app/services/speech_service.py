@@ -39,39 +39,53 @@ class AlibabaSpeechService:
             logger.error(f"Failed to get Alibaba token: {e}")
             raise
     
+    # app/services/speech_service.py (UPDATE transcribe_audio method)
     def transcribe_audio(self, audio_file_path: str) -> str:
         """Transcribe audio using Alibaba ISI Short Sentence Recognition"""
         wav_path = None
         try:
             # Get audio info for logging
             audio_info = self.audio_processor.get_audio_info(audio_file_path)
-            logger.info(f"Processing audio: {audio_info}")
+            logger.info(f"Input audio specs: {audio_info}")
             
-            # Convert to WAV if needed
-            file_ext = os.path.splitext(audio_file_path.lower())[1]
-            if file_ext != '.wav':
-                logger.info(f"Converting {file_ext} to WAV format...")
+            # Check if conversion is needed (regardless of format)
+            needs_conv, reason = self.audio_processor.needs_conversion(audio_file_path)
+            
+            if needs_conv:
+                logger.info(f"Audio conversion needed: {reason}")
                 wav_path = self.audio_processor.convert_to_wav(audio_file_path)
                 processing_path = wav_path
             else:
+                logger.info("Audio already compatible with Alibaba ISI requirements")
                 processing_path = audio_file_path
             
-            # Read the WAV file
+            # Verify final audio specs
+            final_info = self.audio_processor.get_audio_info(processing_path)
+            logger.info(f"Processing audio specs: {final_info}")
+            
+            if not final_info.get('alibaba_isi_compatible', False):
+                logger.warning("Audio may not be fully compatible with Alibaba ISI!")
+            
+            # Read the processed audio file
             with open(processing_path, mode='rb') as f:
                 audio_content = f.read()
             
+            logger.info(f"Audio file size: {len(audio_content)} bytes")
+            
             # Configure request for short sentence recognition
             url = (f'/stream/v1/asr?appkey={settings.ALIBABA_APPKEY}'
-                   f'&format=pcm&sample_rate=24000'
-                   f'&enable_punctuation_prediction=true'
-                   f'&enable_inverse_text_normalization=true'
-                   f'&enable_voice_detection=false')
+                f'&format=pcm&sample_rate=16000'
+                f'&enable_punctuation_prediction=true'
+                f'&enable_inverse_text_normalization=true'
+                f'&enable_voice_detection=false')
             
             headers = {
                 'X-NLS-Token': self.token,
                 'Content-type': 'application/octet-stream',
                 'Content-Length': str(len(audio_content))
             }
+            
+            logger.info(f"Making request to: {self.host}{url}")
             
             # Make request
             conn = http.client.HTTPConnection(self.host)
@@ -84,22 +98,22 @@ class AlibabaSpeechService:
             
             if response.status == 200:
                 result = json.loads(body)
-                logger.info(f"Full response: {result}")
+                logger.info(f"API Response: {result}")
                 
                 if result.get('status') == 20000000:
                     transcribed_text = result.get('result', '')
-                    logger.info(f"Transcription successful: {transcribed_text}")
+                    logger.info(f"✅ Transcription successful: '{transcribed_text}'")
                     return transcribed_text
                 else:
-                    logger.error(f"Speech recognition failed: {result}")
+                    logger.error(f"❌ Speech recognition failed - Status: {result.get('status')}, Message: {result.get('message', 'Unknown error')}")
                     return ""
             else:
-                logger.error(f"HTTP error: {response.status} {response.reason}")
-                logger.error(f"Response body: {body}")
+                logger.error(f"❌ HTTP error: {response.status} {response.reason}")
+                logger.error(f"Response body: {body.decode('utf-8', errors='ignore')}")
                 return ""
                 
         except Exception as e:
-            logger.error(f"Error in speech transcription: {e}")
+            logger.error(f"❌ Error in speech transcription: {e}", exc_info=True)
             return ""
         finally:
             # Clean up temporary WAV file
@@ -107,7 +121,7 @@ class AlibabaSpeechService:
                 try:
                     os.unlink(wav_path)
                     logger.info("Temporary WAV file cleaned up")
-                except:
-                    pass
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to cleanup temp file: {cleanup_error}")
             if 'conn' in locals():
                 conn.close()
