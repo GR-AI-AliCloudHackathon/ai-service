@@ -2,7 +2,9 @@
 import os
 import logging
 import tempfile
+from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import settings
 from app.models.request_models import AudioAssessmentRequest, SummarizerRequest
@@ -17,6 +19,20 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="GoShield - Ride Safety Pipeline", version="1.0.0")
+
+# Add CORS middleware to allow requests from frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # React development server
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",  # Alternative frontend port
+        "https://your-domain.com",  # Add your production domain when deployed
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # Initialize services
 speech_service = AlibabaSpeechService()
